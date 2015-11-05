@@ -2,7 +2,62 @@ import getpass, os.path
 
 from .secrets import SecretsStore, InvalidPassphrase
 
-class CredShell:
+class CredStore:
+    _NAME = 'secrets.db'
+
+    def __init__(self, settings_dir):
+        self._path = os.path.join(settings_dir, self._NAME)
+        self._store = _NullStore()
+
+    @property
+    def user(self):
+        return getpass.getuser()
+
+    def is_new(self):
+        return os.path.exists(self._path)
+
+    def open(self, passphrase):
+        self._store = _OpenedStore(self._path, passphrase)
+
+    def __contains__(self, account):
+        return account in self._store
+
+    def __getitem__(self, account):
+        return self._store[account]
+
+    def __setitem__(self, account, creds):
+        self._store[account] = creds
+
+class _OpenedStore:
+    def __init__(self, path, passphrase):
+        self._store = SecretsStore(path, passphrase)
+        if not os.path.exists(path):
+            self.store['meta:version'] = 1
+
+    def __contains__(self, account):
+        return self._store[account + ':username'] is not None
+
+    def __getitem__(self, account):
+        if account in self:
+            return Cred(
+                self._store[account + ':username'],
+                self._store[account + ':password'])
+
+    def __setitem__(self, account, creds):
+        self._store[account + ':username'] = creds.username
+        self._store[account + ':password'] = creds.password
+
+class _NullStore:
+    def __contains__(self, account):
+        return False
+
+    def __getitem__(self, account):
+        pass
+
+    def __setitem__(self, account, creds):
+        raise Exception('not implemented')
+
+class CliCredShell:
     def __init__(self, settings_dir):
         self._path = os.path.join(settings_dir, 'secrets.db')
         self._store = None

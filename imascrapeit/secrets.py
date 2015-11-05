@@ -1,4 +1,4 @@
-import base64, contextlib, json, os, tempfile, time
+import base64, contextlib, json, os, os.path, tempfile, time
 
 # pip install cryptography
 
@@ -20,6 +20,9 @@ class SecretsStore:
         self._container.data[key] = secret
 
         self._save_store(self._path, self._passphrase, self._container)
+
+    def is_new(self):
+        return not os.path.exists(self._path)
 
     @staticmethod
     def _read_store(path, passphrase):

@@ -3,19 +3,46 @@ require('styles/App.css');
 
 import React from 'react';
 
+import api from './api';
+
 let yeomanImage = require('../images/yeoman.png');
 
-class AppComponent extends React.Component {
-  render() {
-    return (
+function getStateFromSession(session) {
+  if (!session.is_setup) {
+    return '/init';
+  }
+  else if (!session.is_authenticated) {
+    return '/login';
+  }
+  else {
+    return '/accounts';
+  }
+}
 
+class AppComponent extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = {
+      session: null
+    };
+  }
+
+  componentWillMount() {
+    api.get('/session')
+      .then(r => {
+        let session = r || {};
+        this.props.history.pushState(null, getStateFromSession(session));
+      });
+  }
+
+  render() {
+    let session = this.state.session || {};
+
+    return (
       <div className="index">
         <img src={yeomanImage} alt="Yeoman Generator" />
 
-        <div className="notice">
-          <label>Username <input type="text" id="username" /></label>
-          <label>Password <input type="text" id="password" /></label>
-        </div>
+        {this.props.children}
       </div>
     );
   }

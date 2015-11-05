@@ -1,17 +1,22 @@
 import contextlib, importlib, itertools, os.path, sqlite3, sys
 
-# pip install babel chromedriver_installer cryptography python-dateutil selenium watchdog
+# pip install babel chromedriver_installer cryptography Flask marshmallow python-dateutil selenium watchdog
 
-from . import dirs
-from .balance import BalanceEntry, BalanceHistory
-from .chrome import open_chrome
-from .clients import ally, bbt
-from .creds import CredShell
-from .duration import minutes
-from .store import DbMigrator
+from imascrapeit import dirs
+from imascrapeit.balance import BalanceEntry, BalanceHistory
+from imascrapeit.chrome import open_chrome
+from imascrapeit.clients import ally, bbt
+from imascrapeit.creds import CredStore
+from imascrapeit.duration import minutes
+from imascrapeit.store import DbMigrator
+
+import backend
 
 def main():
-    creds = CredShell(dirs.settings())
+    backend.run()
+
+def get_balances():
+    creds = CliCredShell(dirs.settings())
     accounts = [_Account(t, creds[t]) for t in sys.argv[1:]]
 
     db_dir = os.path.join(dirs.settings(), 'history.db')
@@ -63,4 +68,5 @@ def _print_transactions():
 def _combine(*dicts):
     return dict(itertools.chain.from_iterable([d.items() for d in dicts]))
 
-main()
+if __name__ == '__main__':
+    main()
