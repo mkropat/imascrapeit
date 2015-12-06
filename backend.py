@@ -1,31 +1,67 @@
-import contextlib, functools, os, os.path, sqlite3, webbrowser
+import contextlib
+import functools
+import importlib
+import os
+import os.path
+import traceback
 
-from flask import Flask, jsonify, request, Response, session
+from collections import namedtuple
+
+from flask import g, Flask, jsonify, redirect, request, Response, session
 from marshmallow import fields, Schema, ValidationError
 from werkzeug.exceptions import BadRequest
 
 from imascrapeit import dirs
 from imascrapeit.account import Accounts
-from imascrapeit.balance import BalanceHistory
-from imascrapeit.creds import CredStore
+from imascrapeit.balance import BalanceEntry, BalanceHistory
+from imascrapeit.chrome import open_chrome
+from imascrapeit.creds import Cred, CredStore
+from imascrapeit.duration import minutes
+from imascrapeit.requests import AsyncRequestTracker
 from imascrapeit.secrets import SecretsStore, InvalidPassphrase
-from imascrapeit.store import DbMigrator
+from imascrapeit.store import DbContext
+from imascrapeit.threads import BackgroundRunner
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+#app.secret_key = os.urandom(24)
+app.secret_key = b'\x80<\xd9\x19\xec-\x9d\x81F2\xeb\xfcM\x16\rXG\xd0(l\x98\x12\xf2\xf9'
+
+background = BackgroundRunner()
 
 cred_store = CredStore(dirs.settings())
 
 port = 10420
 
-def run(debug=True, open_browser=False):
-    if open_browser:
-        webbrowser.open('http://localhost:{port}/'.format(port=port))
+def run(debug=True):
+    with contextlib.closing(_open_db()) as db:
+        db.init_tables()
 
     app.run(
         debug=debug,
         port=port,
-        threaded=False) # single-user, low-concurrency app for now
+        threaded=True)
+
+    background.join()
+
+def _open_db():
+    path = os.path.join(dirs.settings(), 'history.db')
+    return DbContext(path, {
+        'accounts': Accounts,
+        'balance_history': BalanceHistory,
+    })
+
+def _db():
+    db = getattr(g, '_db', None)
+    if db is None:
+        db = _open_db()
+
+    return db
+
+@app.teardown_appcontext
+def close_connection(exception):
+    db = getattr(g, '_db', None)
+    if db is not None:
+        db.close()
 
 def requires_auth(f):
     @functools.wraps(f)
@@ -60,16 +96,37 @@ class SessionSchema(Schema):
     parse = classmethod(_schema_parse)
     jsonify = classmethod(_schema_jsonify)
 
-class RequestSchema(Schema):
-    class Meta:
-        fields = ("id",)
+@app.route('/api/')
+def entry_point():
+    return jsonify(name='This is an imascrapeit API')
 
-requests = {}
-@app.routes'/api/requests')
-def get_requests():
-    pass
+requests = AsyncRequestTracker()
 
-@app.route('/api/session', methods=['GET', 'POST'])
+@app.route('/api/requests/')
+def list_requests():
+    return jsonify(requests=requests.list())
+
+def _dump_tuple(t):
+    return dict((k, v) for k, v in vars(t).items() if v is not None)
+
+@app.route('/api/requests/<request_id>/')
+def get_request(request_id):
+    try:
+        r = requests[request_id]
+        if r.status == 'pending':
+            code = 202
+        else:
+            code = 200
+
+        response = _dump_tuple(r)
+        response['_links'] = {
+            'self': { 'href': '/api/requests/{}/'.format(r.id) }
+        }
+        return jsonify(**response), code
+    except KeyError:
+        return jsonify(message='No such request'), 404
+
+@app.route('/api/session/', methods=['GET', 'POST'])
 def do_session():
     if request.method == 'POST':
         body = SessionSchema.parse(request.get_json())
@@ -89,42 +146,94 @@ def do_session():
         is_setup=cred_store.is_new(),
         username=cred_store.user)
 
-@contextlib.contextmanager
-def open_table(func):
-    db_dir = os.path.join(dirs.settings(), 'history.db')
-    with contextlib.closing(sqlite3.connect(db_dir)) as db:
-        migrator = DbMigrator(db)
-        yield func(db, migrator)
-
-@app.route('/api/accounts', methods=['GET', 'POST'])
+@app.route('/api/accounts/', methods=['GET', 'POST'])
 @requires_auth
 def get_accounts():
     if request.method == 'GET':
-        with open_table(Accounts) as account_store:
-            with open_table(BalanceHistory) as history:
-                names = [a.name for a in account_store.list()]
-                balances = dict((n, history.get_current(n)) for n in names)
-                accounts = [
-                    account_entry(n, balances[n], cred_store[n]) for n in names
-                ]
-                total = sum(b.amount for b in balances.values())
+        accounts =  _db().accounts.list()
+        balances = dict((a.name, _db().balance_history.get_current(a.name)) for a in accounts)
+        accounts = [
+            account_entry(a, balances[a.name], cred_store[a.name]) for a in accounts
+        ]
+        total = sum(b.amount for b in balances.values())
 
-                return jsonify(
-                    accounts=accounts,
-                    summary={ 'balance': str(total) })
+        return jsonify(
+            accounts=accounts,
+            summary={ 'balance': str(total) })
 
     elif request.method == 'POST':
-        body = request.get_json() or {}
+        body = NewAccountSchema.parse(request.get_json())
 
-class AccountSchema(Schema):
+        body_sanitized = body.copy()
+        body_sanitized['password'] = '*'*len(body_sanitized['password'])
+
+        r = requests.new(body_sanitized)
+
+        _get_client_factory(body['type'])
+
+        background.run(_create_account,
+            body['name'],
+            body['type'],
+            Cred(body['username'], body['password']),
+            r)
+
+        return redirect('/api/requests/{}/'.format(r.id), code=303)
+
+@app.route('/api/accounts/<name>/')
+def get_account(name):
+    pass
+
+def _get_client_factory(type_):
+    m = importlib.import_module('imascrapeit.clients.' + type_)
+    return getattr(m, 'new_client')
+
+def _create_account(name, type_, creds, request_resolver):
+    try:
+        with contextlib.closing(_open_db()) as db:
+            with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
+                client_factory = _get_client_factory(type_)
+                client = client_factory(browser, creds, login_timeout=minutes(5))
+                bal = client.get_balance()
+
+                with db:
+                    db.accounts.create(name, type_)
+                    db.balance_history.add(BalanceEntry(name, bal))
+
+                request_resolver.resolve()
+    except Exception:
+        request_resolver.reject(traceback.format_exc())
+
+class Account:
+    def __init__(self, name, creds=None, type_=None):
+        self.name = name
+        self._creds = creds
+
+        if type_ is None:
+            type_ = self.name
+        self.type_ = type_
+
+        self.client = None
+
+    def new_client(self, browser, timeout=None):
+        m = importlib.import_module('.clients.' + self.type_, __package__)
+        new_client = getattr(m, 'new_client')
+        return new_client(browser, self._creds, timeout)
+
+class NewAccountSchema(Schema):
     name = fields.Str(required=True)
+    type = fields.Str(required=True)
+    username = fields.Str(required=True)
+    password = fields.Str(required=True)
 
-def account_entry(name, balance, creds=None):
+    parse = classmethod(_schema_parse)
+
+def account_entry(account, balance, creds=None):
     entry = {
-        'name': name,
+        'name': account.name,
+        'type': account.type,
         'balance': {
-            'current': str(entry.amount),
-            'last_updated': entry.timestamp.isoformat()
+            'current': str(balance.amount),
+            'last_updated': balance.timestamp.isoformat()
         }
     }
 
@@ -135,7 +244,7 @@ def account_entry(name, balance, creds=None):
 
     return entry
 
-@app.route('/api/accounts/<account>/creds', methods=['PUT'])
+@app.route('/api/accounts/<account>/creds/', methods=['PUT'])
 @requires_auth
 def set_creds(account):
     raise NotImplementedError()

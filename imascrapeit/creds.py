@@ -1,4 +1,6 @@
-import getpass, os.path
+import collections
+import getpass
+import os.path
 
 from .secrets import SecretsStore, InvalidPassphrase
 
@@ -32,7 +34,7 @@ class _OpenedStore:
     def __init__(self, path, passphrase):
         self._store = SecretsStore(path, passphrase)
         if not os.path.exists(path):
-            self.store['meta:version'] = 1
+            self._store['meta:version'] = 1
 
     def __contains__(self, account):
         return self._store[account + ':username'] is not None
@@ -98,7 +100,4 @@ class CliCredShell:
 
         return pw1
 
-class Cred:
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
+Cred = collections.namedtuple('Cred', ['username', 'password'])

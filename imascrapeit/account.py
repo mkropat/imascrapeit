@@ -1,23 +1,24 @@
+from contextlib import closing
+from sqlite3 import Row
+
 class Accounts:
     _TABLE = 'accounts'
 
-    def __init__(self, db, migrator):
+    def __init__(self, db):
         self._db = db
-        self._migrator = migrator
 
-    def _init(self):
-        self._migrator.apply_migrations(self._TABLE, {
+    def init(self, migrator):
+        migrator.apply(self._db, self._TABLE, {
             '20151104': self._create_table
         })
 
     def list(self):
-        self._init()
-
         query = """
         select "name", "type" from "{s._TABLE}"
         """.format(s=self)
-        rows = (sqlite3.Row(c, r) for r in self._db.execute(query))
-        return (Account(row['name'], row['type']) for row in rows)
+        with closing(self._db.cursor()) as c:
+            rows = (Row(c, r) for r in c.execute(query))
+            return [Account(row['name'], row['type']) for row in rows]
 
     def create(self, name, type_):
         if not name or ':' in name:
@@ -26,7 +27,7 @@ class Accounts:
         insert = """
         insert into "{s._TABLE}" ("name", "type") values (?, ?)
         """.format(s=self)
-        self._db.execute(insert, name, type_)
+        self._db.execute(insert, (name, type_))
 
     @classmethod
     def _create_table(klass, db):

@@ -1,4 +1,9 @@
-import contextlib, importlib, itertools, os.path, sqlite3, sys
+import contextlib
+import itertools
+import os.path
+import sqlite3
+import sys
+import webbrowser
 
 # pip install babel chromedriver_installer cryptography Flask marshmallow python-dateutil selenium watchdog
 
@@ -13,11 +18,12 @@ from imascrapeit.store import DbMigrator
 import backend
 
 def main():
+    #webbrowser.open('http://localhost:{port}/'.format(port=port))
     backend.run()
 
 def get_balances():
     creds = CliCredShell(dirs.settings())
-    accounts = [_Account(t, creds[t]) for t in sys.argv[1:]]
+    accounts = [backend.Account(t, creds[t]) for t in sys.argv[1:]]
 
     db_dir = os.path.join(dirs.settings(), 'history.db')
     with contextlib.closing(sqlite3.connect(db_dir)) as db:
@@ -32,22 +38,6 @@ def get_balances():
 
         print('---------')
         print('Balance:', sum([e.amount for e in balances]))
-
-class _Account:
-    def __init__(self, name, creds=None, type_=None):
-        self.name = name
-        self._creds = creds
-
-        if type_ is None:
-            type_ = self.name
-        self.type_ = type_
-
-        self.client = None
-
-    def new_client(self, browser, timeout=None):
-        m = importlib.import_module('.clients.' + self.type_, __package__)
-        new_client = getattr(m, 'new_client')
-        return new_client(browser, self._creds, timeout)
 
 def _fetch_and_store_balances(accounts, history):
     if accounts:

@@ -25,40 +25,32 @@ class BalanceEntry:
 class BalanceHistory:
     _TABLE = 'balance_history'
 
-    def __init__(self, db, migrator):
+    def __init__(self, db):
         self._db = db
-        self._migrator = migrator
 
-    def _init(self):
-        self._migrator.apply_migrations(self._TABLE, {
+    def init(self, migrator):
+        migrator.apply(self._db, self._TABLE, {
             '20151027': self._create_table
         })
 
     def add(self, entry):
-        self._init()
-
         insert = """
         insert into "{s._TABLE}" ("timestamp", "account", "currency", "amount") values (?, ?, ?, ?)
         """.format(s=self)
-        with self._db:
-            self._db.execute(insert, [
-                entry.timestamp.isoformat(),
-                entry.account,
-                entry.amount.currency,
-                str(entry.amount.amount)
-            ])
+        self._db.execute(insert, [
+            entry.timestamp.isoformat(),
+            entry.account,
+            entry.amount.currency,
+            str(entry.amount.amount)
+        ])
 
     def list_accounts(self):
-        self._init()
-
         query = """
         select "account" from "{s._TABLE}" group by "account" order by "account"
         """.format(s=self)
         return [r[0] for r in self._db.execute(query)]
 
     def get_current(self, account):
-        self._init()
-
         query = """
         select "timestamp", "currency", "amount"
         from "{s._TABLE}"
