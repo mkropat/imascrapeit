@@ -45,9 +45,10 @@ class AsyncRequestTracker:
         self._requests[id_] = self._requests[id_]._replace(**kwargs)
 
 class _AsyncRequestResolver(namedtuple('AsyncRequestResolver', ['id', 'tracker'])):
-    def resolve(self):
+    def resolve(self, created_url=None):
         self.tracker._update(self.id,
             completed_at=datetime.utcnow(),
+            created_url=created_url,
             status='success')
 
     def reject(self, error=None):

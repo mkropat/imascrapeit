@@ -21,6 +21,10 @@ class SecretsStore:
 
         self._save_store(self._path, self._passphrase, self._container)
 
+    def __delitem__(self, key):
+        if key in self._container.data:
+            del self._container.data[key]
+
     def is_new(self):
         return not os.path.exists(self._path)
 

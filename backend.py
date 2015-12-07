@@ -1,4 +1,3 @@
-import contextlib
 import functools
 import importlib
 import os
@@ -6,6 +5,7 @@ import os.path
 import traceback
 
 from collections import namedtuple
+from contextlib import closing
 
 from flask import g, Flask, jsonify, redirect, request, Response, session
 from marshmallow import fields, Schema, ValidationError
@@ -32,8 +32,13 @@ cred_store = CredStore(dirs.settings())
 
 port = 10420
 
+_is_debug=False
+
 def run(debug=True):
-    with contextlib.closing(_open_db()) as db:
+    global _is_debug
+    _is_debug = debug
+
+    with closing(_open_db()) as db:
         db.init_tables()
 
     app.run(
@@ -103,6 +108,7 @@ def entry_point():
 requests = AsyncRequestTracker()
 
 @app.route('/api/requests/')
+@requires_auth
 def list_requests():
     return jsonify(requests=requests.list())
 
@@ -110,19 +116,28 @@ def _dump_tuple(t):
     return dict((k, v) for k, v in vars(t).items() if v is not None)
 
 @app.route('/api/requests/<request_id>/')
+@requires_auth
 def get_request(request_id):
     try:
         r = requests[request_id]
-        if r.status == 'pending':
-            code = 202
-        else:
-            code = 200
 
-        response = _dump_tuple(r)
-        response['_links'] = {
+        body = _dump_tuple(r)
+        body['_links'] = {
             'self': { 'href': '/api/requests/{}/'.format(r.id) }
         }
-        return jsonify(**response), code
+        if r.created_url is not None:
+            body['_links']['created'] = { 'href': r.created_url }
+            del body['created_url']
+
+        resp = jsonify(**body)
+
+        if r.status == 'pending':
+            resp.status_code = 202
+        elif r.created_url is not None:
+            resp.status_code = 201
+            resp.headers['Location'] = r.created_url
+
+        return resp
     except KeyError:
         return jsonify(message='No such request'), 404
 
@@ -136,6 +151,8 @@ def do_session():
             try:
                 cred_store.open(body['passphrase'])
                 session['is_authenticated'] = True
+                if _is_debug:
+                    session['passphrase'] = body['passphrase']
             except InvalidPassphrase:
                 return jsonify(message='Invalid passphrase'), 400
 
@@ -162,6 +179,34 @@ def get_accounts():
             summary={ 'balance': str(total) })
 
     elif request.method == 'POST':
+        body = BulkAccountSchema.parse(request.get_json())
+        if body['action'] != 'update':
+            return jsonify(message='Unsupported action'), 400
+
+        r = requests.new()
+
+        background.run(_update_accounts, r)
+
+        return redirect('/api/requests/{}/'.format(r.id), code=303)
+
+@app.route('/api/accounts/<name>/', methods=['GET', 'PUT', 'DELETE'])
+@requires_auth
+def get_account(name):
+    if request.method == 'GET':
+        try:
+            a = _db().accounts.get(name)
+            balance = _db().balance_history.get_current(a.name)
+
+            resp = account_entry(a, balance, cred_store[a.name])
+            resp['_links'] = {
+                'self': { 'href': '/api/accounts/{}/'.format(name) },
+            }
+
+            return jsonify(**resp)
+        except KeyError:
+            return jsonify(message='No such acccount'), 404
+
+    elif request.method == 'PUT':
         body = NewAccountSchema.parse(request.get_json())
 
         body_sanitized = body.copy()
@@ -172,16 +217,20 @@ def get_accounts():
         _get_client_factory(body['type'])
 
         background.run(_create_account,
-            body['name'],
+            name,
             body['type'],
             Cred(body['username'], body['password']),
             r)
 
         return redirect('/api/requests/{}/'.format(r.id), code=303)
 
-@app.route('/api/accounts/<name>/')
-def get_account(name):
-    pass
+    elif request.method == 'DELETE':
+        db = _db()
+        with db:
+            del db.accounts[name]
+            db.balance_history.delete_history(name)
+            del cred_store[name]
+        return '', 204
 
 def _get_client_factory(type_):
     m = importlib.import_module('imascrapeit.clients.' + type_)
@@ -189,7 +238,7 @@ def _get_client_factory(type_):
 
 def _create_account(name, type_, creds, request_resolver):
     try:
-        with contextlib.closing(_open_db()) as db:
+        with closing(_open_db()) as db:
             with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
                 client_factory = _get_client_factory(type_)
                 client = client_factory(browser, creds, login_timeout=minutes(5))
@@ -198,8 +247,29 @@ def _create_account(name, type_, creds, request_resolver):
                 with db:
                     db.accounts.create(name, type_)
                     db.balance_history.add(BalanceEntry(name, bal))
+                    cred_store[name] = creds
 
-                request_resolver.resolve()
+                request_resolver.resolve(created_url='/api/accounts/{}/'.format(name))
+    except Exception:
+        request_resolver.reject(traceback.format_exc())
+
+def _update_accounts(request_resolver):
+    try:
+        with closing(_open_db()) as db:
+            with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
+                with db:
+                    for a in db.accounts.list():
+                        client_factory = _get_client_factory(a.type)
+                        client = client_factory(
+                            browser,
+                            cred_store[a.name],
+                            login_timeout=minutes(5))
+
+                        bal = client.get_balance()
+
+                        db.balance_history.add(BalanceEntry(a.name, bal))
+
+        request_resolver.resolve()
     except Exception:
         request_resolver.reject(traceback.format_exc())
 
@@ -219,8 +289,12 @@ class Account:
         new_client = getattr(m, 'new_client')
         return new_client(browser, self._creds, timeout)
 
+class BulkAccountSchema(Schema):
+    action = fields.Str(required=True)
+
+    parse = classmethod(_schema_parse)
+
 class NewAccountSchema(Schema):
-    name = fields.Str(required=True)
     type = fields.Str(required=True)
     username = fields.Str(required=True)
     password = fields.Str(required=True)
@@ -229,7 +303,7 @@ class NewAccountSchema(Schema):
 
 def account_entry(account, balance, creds=None):
     entry = {
-        'name': account.name,
+        'id': account.name,
         'type': account.type,
         'balance': {
             'current': str(balance.amount),
@@ -250,6 +324,11 @@ def set_creds(account):
     raise NotImplementedError()
 
 def is_authenticated():
+    if not cred_store.is_open() and 'passphrase' in session:
+        cred_store.open(session['passphrase'])
+    return is_browser_auth() and cred_store.is_open()
+
+def is_browser_auth():
     if 'is_authenticated' in session:
         return bool(session['is_authenticated'])
     else:

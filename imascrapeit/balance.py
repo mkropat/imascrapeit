@@ -68,6 +68,12 @@ class BalanceHistory:
         else:
             return BalanceEntry(account, Amount.null())
 
+    def delete_history(self, account):
+        query = """
+        delete from "{s._TABLE}" where "account"=?
+        """.format(s=self)
+        self._db.execute(query, [account])
+
     def _fetchone(self, query, *args):
         c = self._db.cursor()
         row = c.execute(query, args).fetchone()

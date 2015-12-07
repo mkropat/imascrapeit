@@ -18,6 +18,9 @@ class CredStore:
     def is_new(self):
         return os.path.exists(self._path)
 
+    def is_open(self):
+        return not isinstance(self._store, _NullStore)
+
     def open(self, passphrase):
         self._store = _OpenedStore(self._path, passphrase)
 
@@ -29,6 +32,9 @@ class CredStore:
 
     def __setitem__(self, account, creds):
         self._store[account] = creds
+
+    def __delitem__(self, account):
+        del self._store[account]
 
 class _OpenedStore:
     def __init__(self, path, passphrase):
@@ -49,6 +55,10 @@ class _OpenedStore:
         self._store[account + ':username'] = creds.username
         self._store[account + ':password'] = creds.password
 
+    def __delitem__(self, account):
+        del self._store[account + ':username']
+        del self._store[account + ':password']
+
 class _NullStore:
     def __contains__(self, account):
         return False
@@ -57,6 +67,9 @@ class _NullStore:
         pass
 
     def __setitem__(self, account, creds):
+        raise Exception('not implemented')
+
+    def __delitem__(self, account):
         raise Exception('not implemented')
 
 class CliCredShell:
