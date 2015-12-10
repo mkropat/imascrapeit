@@ -57,6 +57,7 @@
     "webpack-dev-server": "^1.12.0"
   },
   "dependencies": {
+    "axios": "^0.7.0",
     "bootstrap": "^3.3.5",
     "bootstrap-webpack": "0.0.5",
     "history": "^1.13.0",

@@ -3,15 +3,18 @@ require('bootstrap-webpack');
 
 import React from 'react';
 import ReactDOM from 'react-dom';
+import axios from 'axios';
 import { Router, Route, Link } from 'react-router'
+
 import App from './Main';
-import api from './api';
+
 
 class Initialize extends React.Component {
   render() {
     return <p>Initialize screen</p>
   }
 }
+
 class Login extends React.Component {
   render() {
     return (
@@ -30,14 +33,12 @@ class Login extends React.Component {
   handleSubmit(evt) {
     evt.preventDefault();
 
-    api.post('/session', {
+    axios.post('/api/session', {
       passphrase: this.refs.passphrase.value
     })
       .then(() => {
         this.props.history.pushState(null, '/accounts');
       });
-
-    console.log('passphrase', this.refs.passphrase.value);
   }
 }
 
@@ -45,26 +46,85 @@ class Accounts extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      accounts: []
+      accounts: [],
+      summary: {},
+      updateStatus: 'ready'
     };
   }
 
   componentWillMount() {
-    api.get('/accounts')
+    this.getAccounts();
+  }
+
+  getAccounts() {
+    axios.get('/api/accounts')
       .then(r => {
-        let accounts = r.accounts || [];
         this.setState({
-          accounts: accounts
+          accounts: r.data.accounts || [],
+          summary: r.data.summary || {}
         });
       });
   }
 
+  updateAccounts() {
+    axios.post('/api/accounts', {
+      action: 'update'
+    })
+      .then(r => {
+        this.setState({
+          updateStatus: r.data.status
+        });
+
+        this.pollWhilePending(r.data._links.self.href);
+      });
+  }
+
+  pollWhilePending(url) {
+    setTimeout(() => this.poll(url), 1000);
+  }
+
+  poll(url) {
+    axios.get(url)
+      .then(r => {
+        this.setState({
+          updateStatus: r.data.status
+        });
+
+        if (this.state.updateStatus === 'pending') {
+          this.pollWhilePending(url);
+        }
+        else {
+          this.getAccounts();
+        }
+      });
+  }
+
   render() {
-    let rows = this.state.accounts.map(a => <li key={a}>{a}</li>);
+    const rows = this.state.accounts.map(a =>
+      <tr key={a.id}>
+        <td>{a.id}</td>
+        <td>{a.balance.current}</td>
+      </tr>);
+
     return (
-      <div>
-        <h2>Accounts screen</h2>
-        <ul>{rows}</ul>
+      <div className="container">
+        <h2>Accounts</h2>
+        <table className="table">
+          <thead>
+            <tr><th>Name</th><th>Balance</th></tr>
+          </thead>
+          <tbody>
+            {rows}
+          </tbody>
+          <tfoot>
+            <tr><th>Total</th><td>{this.state.summary.balance}</td></tr>
+          </tfoot>
+        </table>
+        <button className="btn btn-primary"
+          disabled={this.state.updateStatus === 'pending' ? 'disabled' : ''}
+          onClick={() => this.updateAccounts()}>
+          {this.state.updateStatus === 'pending' ? 'Updating...' : 'Update Accounts'}
+        </button>
       </div>
     );
   }

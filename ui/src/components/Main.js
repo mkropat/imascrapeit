@@ -2,10 +2,7 @@ require('normalize.css');
 require('styles/App.css');
 
 import React from 'react';
-
-import api from './api';
-
-let yeomanImage = require('../images/yeoman.png');
+import axios from 'axios';
 
 function getStateFromSession(session) {
   if (!session.is_setup) {
@@ -28,10 +25,10 @@ class AppComponent extends React.Component {
   }
 
   componentWillMount() {
-    api.get('/session')
+    axios.get('/api/session')
       .then(r => {
-        let session = r || {};
-        this.props.history.pushState(null, getStateFromSession(session));
+        let session = r.data || {};
+        this.props.history.push(getStateFromSession(session));
       });
   }
 
@@ -40,8 +37,6 @@ class AppComponent extends React.Component {
 
     return (
       <div className="index">
-        <img src={yeomanImage} alt="Yeoman Generator" />
-
         {this.props.children}
       </div>
     );

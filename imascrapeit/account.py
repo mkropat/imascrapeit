@@ -12,7 +12,7 @@ class Accounts:
             '20151104': self._create_table
         })
 
-    def get(self, name):
+    def __getitem__(self, name):
         query = """
         select "name", "type" from "{s._TABLE}" where "name" = ?
         """.format(s=self)

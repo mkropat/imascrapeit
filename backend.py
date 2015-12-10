@@ -72,7 +72,7 @@ def requires_auth(f):
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         if not is_authenticated():
-            return jsonify(message='Must be logged in'), 400
+            return jsonify(message='Must be logged in'), 403
         else:
             return f(*args, **kwargs)
 
@@ -101,13 +101,13 @@ class SessionSchema(Schema):
     parse = classmethod(_schema_parse)
     jsonify = classmethod(_schema_jsonify)
 
-@app.route('/api/')
+@app.route('/api')
 def entry_point():
     return jsonify(name='This is an imascrapeit API')
 
 requests = AsyncRequestTracker()
 
-@app.route('/api/requests/')
+@app.route('/api/requests')
 @requires_auth
 def list_requests():
     return jsonify(requests=requests.list())
@@ -115,7 +115,7 @@ def list_requests():
 def _dump_tuple(t):
     return dict((k, v) for k, v in vars(t).items() if v is not None)
 
-@app.route('/api/requests/<request_id>/')
+@app.route('/api/requests/<request_id>')
 @requires_auth
 def get_request(request_id):
     try:
@@ -123,7 +123,7 @@ def get_request(request_id):
 
         body = _dump_tuple(r)
         body['_links'] = {
-            'self': { 'href': '/api/requests/{}/'.format(r.id) }
+            'self': { 'href': '/api/requests/{}'.format(r.id) }
         }
         if r.created_url is not None:
             body['_links']['created'] = { 'href': r.created_url }
@@ -141,7 +141,7 @@ def get_request(request_id):
     except KeyError:
         return jsonify(message='No such request'), 404
 
-@app.route('/api/session/', methods=['GET', 'POST'])
+@app.route('/api/session', methods=['GET', 'POST'])
 def do_session():
     if request.method == 'POST':
         body = SessionSchema.parse(request.get_json())
@@ -163,7 +163,7 @@ def do_session():
         is_setup=cred_store.is_new(),
         username=cred_store.user)
 
-@app.route('/api/accounts/', methods=['GET', 'POST'])
+@app.route('/api/accounts', methods=['GET', 'POST'])
 @requires_auth
 def get_accounts():
     if request.method == 'GET':
@@ -187,19 +187,19 @@ def get_accounts():
 
         background.run(_update_accounts, r)
 
-        return redirect('/api/requests/{}/'.format(r.id), code=303)
+        return redirect('/api/requests/{}'.format(r.id), code=303)
 
-@app.route('/api/accounts/<name>/', methods=['GET', 'PUT', 'DELETE'])
+@app.route('/api/accounts/<name>', methods=['GET', 'PUT', 'DELETE'])
 @requires_auth
 def get_account(name):
     if request.method == 'GET':
         try:
-            a = _db().accounts.get(name)
+            a = _db().accounts[name]
             balance = _db().balance_history.get_current(a.name)
 
             resp = account_entry(a, balance, cred_store[a.name])
             resp['_links'] = {
-                'self': { 'href': '/api/accounts/{}/'.format(name) },
+                'self': { 'href': '/api/accounts/{}'.format(name) },
             }
 
             return jsonify(**resp)
@@ -222,7 +222,7 @@ def get_account(name):
             Cred(body['username'], body['password']),
             r)
 
-        return redirect('/api/requests/{}/'.format(r.id), code=303)
+        return redirect('/api/requests/{}'.format(r.id), code=303)
 
     elif request.method == 'DELETE':
         db = _db()
@@ -249,7 +249,7 @@ def _create_account(name, type_, creds, request_resolver):
                     db.balance_history.add(BalanceEntry(name, bal))
                     cred_store[name] = creds
 
-                request_resolver.resolve(created_url='/api/accounts/{}/'.format(name))
+                request_resolver.resolve(created_url='/api/accounts/{}'.format(name))
     except Exception:
         request_resolver.reject(traceback.format_exc())
 
@@ -318,7 +318,7 @@ def account_entry(account, balance, creds=None):
 
     return entry
 
-@app.route('/api/accounts/<account>/creds/', methods=['PUT'])
+@app.route('/api/accounts/<account>/creds', methods=['PUT'])
 @requires_auth
 def set_creds(account):
     raise NotImplementedError()
