@@ -3,18 +3,7 @@ require('styles/App.css');
 
 import React from 'react';
 import axios from 'axios';
-
-function getStateFromSession(session) {
-  if (!session.is_setup) {
-    return '/init';
-  }
-  else if (!session.is_authenticated) {
-    return '/login';
-  }
-  else {
-    return '/accounts';
-  }
-}
+import { Link } from 'react-router'
 
 class AppComponent extends React.Component {
   constructor(props) {
@@ -33,17 +22,42 @@ class AppComponent extends React.Component {
   }
 
   render() {
-    let session = this.state.session || {};
+    let breadcrumbs = this.props.routes.slice(0, this.props.routes.length - 1);
+    let active = this.props.routes[this.props.routes.length - 1];
 
     return (
-      <div className="index">
+      <div className="index container">
+        <ol className="breadcrumb">
+          {breadcrumbs.map((item, index) =>
+            <li key={index}>
+              <Link to={item.path || ''}>
+                {item.component.title}
+              </Link>
+            </li>
+          )}
+          <li className="active">
+            {active.component.title}
+          </li>
+        </ol>
+
         {this.props.children}
       </div>
     );
   }
 }
 
-AppComponent.defaultProps = {
-};
+AppComponent.title = "I'ma Scrape It"
+
+function getStateFromSession(session) {
+  if (!session.is_setup) {
+    return '/init';
+  }
+  else if (!session.is_authenticated) {
+    return '/login';
+  }
+  else {
+    return '/accounts';
+  }
+}
 
 export default AppComponent;
