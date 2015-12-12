@@ -3,10 +3,11 @@ require('bootstrap-webpack');
 
 import React from 'react';
 import ReactDOM from 'react-dom';
-import { Router, Route } from 'react-router'
+import { IndexRoute, Router, Route } from 'react-router'
 
 import App from './Main';
 import Accounts from './Accounts';
+import Home from './Home';
 import Login from './Login';
 import NoMatch from './NoMatch';
 import Setup from './Setup';
@@ -16,6 +17,7 @@ import Setup from './Setup';
 ReactDOM.render((
   <Router>
     <Route path="/" component={App}>
+      <IndexRoute component={Home} />
       <Route path="setup" component={Setup} />
       <Route path="login" component={Login} />
       <Route path="accounts" component={Accounts} />
