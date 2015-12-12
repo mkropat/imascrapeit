@@ -1,5 +1,6 @@
 import React from 'react';
 import axios from 'axios';
+import moment from 'moment/moment';
 
 class Accounts extends React.Component {
   constructor(props) {
@@ -63,6 +64,7 @@ class Accounts extends React.Component {
       <tr key={a.id}>
         <td>{a.id}</td>
         <td>{a.balance.current}</td>
+        <td>{moment(a.balance.last_updated).fromNow()}</td>
       </tr>);
 
     return (
@@ -70,7 +72,7 @@ class Accounts extends React.Component {
         <h2>Accounts</h2>
         <table className="table">
           <thead>
-            <tr><th>Name</th><th>Balance</th></tr>
+            <tr><th>Name</th><th>Balance</th><th>Last Updated</th></tr>
           </thead>
           <tbody>
             {rows}

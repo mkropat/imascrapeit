@@ -307,7 +307,7 @@ def account_entry(account, balance, creds=None):
         'type': account.type,
         'balance': {
             'current': str(balance.amount),
-            'last_updated': balance.timestamp.isoformat()
+            'last_updated': balance.timestamp.isoformat() + 'Z'
         }
     }
 
