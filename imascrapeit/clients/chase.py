@@ -3,6 +3,8 @@ import re
 from ..amount import parse_usd
 
 class ChaseClient:
+    ENTRY_POINT = 'https://www.chase.com/'
+
     def __init__(self, browser, creds, login_timeout=0):
         self._browser = browser
         self._creds = creds
@@ -12,7 +14,7 @@ class ChaseClient:
 
     def _home(self):
         if self._browser.url != self._home_url:
-            self._browser.load('https://www.chase.com/')
+            self._browser.load(self.ENTRY_POINT)
 
             self._browser.input_text('#usr_name_home', self._creds.username)
             self._browser.input_text_submit('#usr_password_home', self._creds.password)

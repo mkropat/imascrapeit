@@ -7,56 +7,23 @@ class Accounts extends React.Component {
   constructor(props) {
     super(props);
 
+    this._listenerId = null;
     this.state = {
       accounts: [],
       summary: {},
-      updateStatus: 'ready'
+      isUpdating: false,
     };
   }
 
   componentWillMount() {
-    this.getAccounts();
-  }
-
-  getAccounts() {
-    this.props.route.accountsResource.list()
-      .then(r => {
-        this.setState({
-          accounts: r.accounts || [],
-          summary: r.summary || {}
-        });
+    this._listenerId = this.props.route.accountsResource.listen(r => {
+      this.setState({
+        accounts: r.accounts || [],
+        summary: r.summary || {}
       });
-  }
+    });
 
-  updateAccounts() {
-    this.props.route.accountsResource.update()
-      .then(r => {
-        this.setState({
-          updateStatus: r.data.status
-        });
-
-        this.pollWhilePending(r.data._links.self.href);
-      });
-  }
-
-  pollWhilePending(url) {
-    setTimeout(() => this.poll(url), 1000);
-  }
-
-  poll(url) {
-    axios.get(url)
-      .then(r => {
-        this.setState({
-          updateStatus: r.data.status
-        });
-
-        if (this.state.updateStatus === 'pending') {
-          this.pollWhilePending(url);
-        }
-        else {
-          this.getAccounts();
-        }
-      });
+    this.props.route.accountsResource.listFresh()
   }
 
   render() {
@@ -78,6 +45,7 @@ class Accounts extends React.Component {
     return (
       <div className="container">
         <h2>Accounts</h2>
+
         <table className="table">
           <thead>
             <tr><th>Name</th><th>Balance</th><th>Last Updated</th></tr>
@@ -89,28 +57,48 @@ class Accounts extends React.Component {
             <tr><th>Total</th><td>{this.state.summary.balance}</td><td>&nbsp;</td></tr>
           </tfoot>
         </table>
+
         <div className="btn-toolbar">
-        <button className="btn btn-primary"
-          disabled={this.canUpdateAccounts() ? '' : 'disabled'}
-          onClick={() => this.updateAccounts()}>
-          {this.state.updateStatus === 'pending' ? 'Updating...' : 'Update Accounts'}
-        </button>
-        <Link
-          to="/accounts/new"
-          className="btn btn-default">
-          Add Account
-        </Link>
+          <button className="btn btn-primary"
+            disabled={this.canUpdateAccounts() ? '' : 'disabled'}
+            onClick={() => this.updateAccounts()}>
+            {this.state.isUpdating ? 'Updating...' : 'Update Accounts'}
+          </button>
+          <Link
+            to="/accounts/new"
+            className="btn btn-default">
+            Add Account
+          </Link>
         </div>
       </div>
     );
   }
 
   canUpdateAccounts() {
-    return this.state.updateStatus !== 'pending' && this.state.accounts.length;
+    return this.state.accounts.length && !this.state.isUpdating;
   }
 
   formatTimestamp(ts) {
     return moment(ts).fromNow();
+  }
+
+  updateAccounts() {
+    this.setState({
+      isUpdating: true,
+    });
+
+    let stopUpdating = () => {
+      this.setState({
+        isUpdating: false
+      });
+    };
+
+    this.props.route.accountsResource.update()
+      .then(stopUpdating, stopUpdating);
+  }
+
+  componentWillUnmount() {
+    this.props.route.accountsResource.stopListening(this._listenerId);
   }
 }
 

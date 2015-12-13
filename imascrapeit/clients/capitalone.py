@@ -1,6 +1,8 @@
 from ..amount import parse_usd
 
 class CapitalOneCreditCardClient:
+    ENTRY_POINT = 'https://servicing.capitalone.com/c1/Login.aspx'
+
     def __init__(self, browser, creds, login_timeout=0):
         self._browser = browser
         self._creds = creds
@@ -10,7 +12,7 @@ class CapitalOneCreditCardClient:
 
     def _home(self):
         if self._browser.url != self._home_url:
-            self._browser.load('https://servicing.capitalone.com/c1/Login.aspx')
+            self._browser.load(self.ENTRY_POINT)
 
             with self._browser.enter_iframe('#loginframe'):
                 self._browser.input_text('#uname', self._creds.username)

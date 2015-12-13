@@ -4,6 +4,8 @@ from ..amount import parse_usd
 from ..transaction import Transaction
 
 class AllyClient:
+    ENTRY_POINT = 'https://securebanking.ally.com/'
+
     def __init__(self, browser, creds, login_timeout=0):
         self._browser = browser
         self._creds = creds
@@ -13,7 +15,7 @@ class AllyClient:
 
     def _home(self):
         if self._browser.url != self._home_url:
-            self._browser.load('https://securebanking.ally.com/')
+            self._browser.load(self.ENTRY_POINT)
 
             self._browser.input_text('#username', self._creds.username)
             self._browser.input_text_submit('#password', self._creds.password)

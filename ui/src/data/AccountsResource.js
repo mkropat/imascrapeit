@@ -4,6 +4,25 @@ class AccountsResource {
   constructor() {
     this._listCache = null;
     this._getCache = {};
+    this._listeners = [];
+    this._listenerId = 1;
+  }
+
+  listen(cb) {
+    this._listeners[this._listenerId] = cb;
+    return this._listenerId++;
+  }
+
+  stopListening(id) {
+    if (id) {
+      delete this._listeners[id];
+    }
+  }
+
+  _notify(data) {
+    this._listeners.forEach(cb => {
+      cb(data);
+    });
   }
 
   list() {
@@ -20,6 +39,10 @@ class AccountsResource {
         this._getCache = {};
         this._listCache.accounts.forEach(a => {
           this._getCache[a.id] = a;
+        });
+
+        setTimeout(() => {
+          this._notify(this._listCache);
         });
 
         return this._listCache;
@@ -41,11 +64,52 @@ class AccountsResource {
       });
   }
 
-  update() {
-    return axios.post('/api/accounts', {
-      action: 'update'
-    });
+  add(id, driver, username, password) {
+    id = '' + id;
+    if (!id) {
+      throw new Error('Expected an id');
+    }
+    var p = axios.put('/api/accounts/' + id, {
+      type: driver,
+      username: username,
+      password: password
+    })
+      .then(r => pollWhilePending(r.data._links.self.href));
+    p.then(() => this.listFresh());
+    return p;
   }
+
+  update() {
+    var p = axios.post('/api/accounts', {
+      action: 'update'
+    })
+      .then(r => pollWhilePending(r.data._links.self.href));
+    p.then(() => this.listFresh());
+    return p;
+  }
+
+  delete(id) {
+    id = '' + id;
+    if (!id) {
+      throw new Error('Expected an id');
+    }
+    var p = axios.delete('/api/accounts/' + id);
+    p.then(() => this.listFresh());
+    return p;
+  }
+}
+
+function pollWhilePending(url) {
+  return axios.get(url)
+    .then(r => {
+      return r.data.status === 'pending'
+        ? delay(1000).then(() => pollWhilePending(url))
+        : r;
+    });
+}
+
+function delay(ms) {
+  return new Promise(r => setTimeout(r, ms));
 }
 
 export default AccountsResource;

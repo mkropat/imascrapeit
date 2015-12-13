@@ -26,7 +26,7 @@ ReactDOM.render((
       <Route path="setup" component={Setup} />
       <Route path="login" component={Login} />
       <Route path="accounts" component={Accounts} accountsResource={accountsResource}>
-        <Route path="new" component={AddAccount} />
+        <Route path="new" component={AddAccount} accountsResource={accountsResource} />
         <Route path=":id" component={AccountDetail}
           accountsResource={accountsResource}
           breadcrumbNotifier={breadcrumbNotifier} />

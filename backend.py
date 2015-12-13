@@ -1,17 +1,15 @@
 import functools
-import importlib
 import os
 import os.path
 import traceback
 
-from collections import namedtuple
 from contextlib import closing
 
 from flask import g, Flask, jsonify, redirect, request, Response, session
 from marshmallow import fields, Schema, ValidationError
 from werkzeug.exceptions import BadRequest
 
-from imascrapeit import dirs
+from imascrapeit import dirs, driver
 from imascrapeit.account import Accounts
 from imascrapeit.balance import BalanceEntry, BalanceHistory
 from imascrapeit.chrome import open_chrome
@@ -214,7 +212,7 @@ def get_account(name):
 
         r = requests.new(body_sanitized)
 
-        _get_client_factory(body['type'])
+        driver.get_factory(body['type'])
 
         background.run(_create_account,
             name,
@@ -232,15 +230,16 @@ def get_account(name):
             del cred_store[name]
         return '', 204
 
-def _get_client_factory(type_):
-    m = importlib.import_module('imascrapeit.clients.' + type_)
-    return getattr(m, 'new_client')
+@app.route('/api/drivers')
+@requires_auth
+def get_drivers():
+    return jsonify(drivers=driver.list())
 
 def _create_account(name, type_, creds, request_resolver):
     try:
         with closing(_open_db()) as db:
             with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
-                client_factory = _get_client_factory(type_)
+                client_factory = driver.get_factory(type_)
                 client = client_factory(browser, creds, login_timeout=minutes(5))
                 bal = client.get_balance()
 
@@ -259,7 +258,7 @@ def _update_accounts(request_resolver):
             with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
                 with db:
                     for a in db.accounts.list():
-                        client_factory = _get_client_factory(a.type)
+                        client_factory = driver.get_factory(a.type)
                         client = client_factory(
                             browser,
                             cred_store[a.name],
@@ -285,9 +284,7 @@ class Account:
         self.client = None
 
     def new_client(self, browser, timeout=None):
-        m = importlib.import_module('.clients.' + self.type_, __package__)
-        new_client = getattr(m, 'new_client')
-        return new_client(browser, self._creds, timeout)
+        return driver.get_factory(self.type_)(browser, self._creds, timeout)
 
 class BulkAccountSchema(Schema):
     action = fields.Str(required=True)
