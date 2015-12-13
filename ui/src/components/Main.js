@@ -9,11 +9,14 @@ class AppComponent extends React.Component {
   constructor(props) {
     super(props);
     this.state = {
-      session: null
+      breadcrumbTitles: {}
     };
   }
 
   componentWillMount() {
+    this._listenerId = this.props.route.breadcrumbNotifier.listen(
+        this.updateBreadcrumbTitles.bind(this));
+
     axios.get('/api/session')
       .then(r => {
         let session = r.data || {};
@@ -21,9 +24,18 @@ class AppComponent extends React.Component {
       });
   }
 
+  updateBreadcrumbTitles(component, title) {
+    let newBreadcrumbTitles = Object.assign({}, this.state.breadcrumbTitles);
+    newBreadcrumbTitles[component] = title;
+
+    this.setState({
+      breadcrumbTitles: newBreadcrumbTitles
+    });
+  }
+
   render() {
-    let breadcrumbs = this.props.routes.slice(0, this.props.routes.length - 1);
-    let active = this.props.routes[this.props.routes.length - 1];
+    let breadcrumbs = this.getBreadcrumbs();
+    let active = breadcrumbs.pop();
 
     return (
       <div className="index container">
@@ -31,18 +43,45 @@ class AppComponent extends React.Component {
           {breadcrumbs.map((item, index) =>
             <li key={index}>
               <Link to={item.path || ''}>
-                {item.component.title}
+                {item.title}
               </Link>
             </li>
           )}
           <li className="active">
-            {active.component.title}
+            {active.title}
           </li>
         </ol>
 
         {this.props.children}
       </div>
     );
+  }
+
+  getBreadcrumbs() {
+    let parts = this.props.routes.map(i => ({
+      path: i.path,
+      title: this.getTitle(i.component)
+    }));
+
+    let lastPath = '';
+    parts.forEach(i => {
+      i.path = (lastPath + '/' + i.path).replace('//', '/');
+      lastPath = i.path;
+    });
+
+    return parts;
+  }
+
+  getTitle(component) {
+    return this.state.breadcrumbTitles.hasOwnProperty(component)
+        ? this.state.breadcrumbTitles[component]
+        : component.title
+  }
+
+  componentWillUnmount() {
+    if (this._listenerId) {
+      this.props.route.breadcrumbNotifier.stopListening(this._listenerId);
+    }
   }
 }
 

@@ -8,7 +8,7 @@ class Home extends React.Component {
 
   render() {
     return (
-      <Link to="accounts">
+      <Link to="/accounts">
         Go to Accounts
       </Link>
     );

@@ -5,22 +5,32 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { IndexRoute, Router, Route } from 'react-router'
 
-import App from './Main';
+import AccountDetail from './AccountDetail';
 import Accounts from './Accounts';
+import AccountsResource from '../data/AccountsResource';
+import AddAccount from './AddAccount';
+import App from './Main';
 import Home from './Home';
 import Login from './Login';
 import NoMatch from './NoMatch';
+import Notifier from '../services/Notifier';
 import Setup from './Setup';
 
-// Render the main component into the dom
-//ReactDOM.render(<App />, document.getElementById('app'));
+let accountsResource = new AccountsResource();
+let breadcrumbNotifier = new Notifier();
+
 ReactDOM.render((
   <Router>
-    <Route path="/" component={App}>
+    <Route path="/" component={App} breadcrumbNotifier={breadcrumbNotifier}>
       <IndexRoute component={Home} />
       <Route path="setup" component={Setup} />
       <Route path="login" component={Login} />
-      <Route path="accounts" component={Accounts} />
+      <Route path="accounts" component={Accounts} accountsResource={accountsResource}>
+        <Route path="new" component={AddAccount} />
+        <Route path=":id" component={AccountDetail}
+          accountsResource={accountsResource}
+          breadcrumbNotifier={breadcrumbNotifier} />
+      </Route>
       <Route path="*" component={NoMatch} />
     </Route>
   </Router>

@@ -1,10 +1,12 @@
 import React from 'react';
+import { Link } from 'react-router'
 import axios from 'axios';
 import moment from 'moment/moment';
 
 class Accounts extends React.Component {
   constructor(props) {
     super(props);
+
     this.state = {
       accounts: [],
       summary: {},
@@ -17,19 +19,17 @@ class Accounts extends React.Component {
   }
 
   getAccounts() {
-    axios.get('/api/accounts')
+    this.props.route.accountsResource.list()
       .then(r => {
         this.setState({
-          accounts: r.data.accounts || [],
-          summary: r.data.summary || {}
+          accounts: r.accounts || [],
+          summary: r.summary || {}
         });
       });
   }
 
   updateAccounts() {
-    axios.post('/api/accounts', {
-      action: 'update'
-    })
+    this.props.route.accountsResource.update()
       .then(r => {
         this.setState({
           updateStatus: r.data.status
@@ -60,11 +60,19 @@ class Accounts extends React.Component {
   }
 
   render() {
+    if (this.props.children) {
+      return <div>{this.props.children}</div>
+    }
+
     const rows = this.state.accounts.map(a =>
       <tr key={a.id}>
-        <td>{a.id}</td>
+        <td>
+          <Link to={`/accounts/${a.id}`}>
+            {a.id}
+          </Link>
+        </td>
         <td>{a.balance.current}</td>
-        <td>{moment(a.balance.last_updated).fromNow()}</td>
+        <td>{this.formatTimestamp(a.balance.last_updated)}</td>
       </tr>);
 
     return (
@@ -78,16 +86,31 @@ class Accounts extends React.Component {
             {rows}
           </tbody>
           <tfoot>
-            <tr><th>Total</th><td>{this.state.summary.balance}</td></tr>
+            <tr><th>Total</th><td>{this.state.summary.balance}</td><td>&nbsp;</td></tr>
           </tfoot>
         </table>
+        <div className="btn-toolbar">
         <button className="btn btn-primary"
-          disabled={this.state.updateStatus === 'pending' ? 'disabled' : ''}
+          disabled={this.canUpdateAccounts() ? '' : 'disabled'}
           onClick={() => this.updateAccounts()}>
           {this.state.updateStatus === 'pending' ? 'Updating...' : 'Update Accounts'}
         </button>
+        <Link
+          to="/accounts/new"
+          className="btn btn-default">
+          Add Account
+        </Link>
+        </div>
       </div>
     );
+  }
+
+  canUpdateAccounts() {
+    return this.state.updateStatus !== 'pending' && this.state.accounts.length;
+  }
+
+  formatTimestamp(ts) {
+    return moment(ts).fromNow();
   }
 }
 
