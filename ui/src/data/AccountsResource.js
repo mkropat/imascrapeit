@@ -64,13 +64,11 @@ class AccountsResource {
       });
   }
 
-  add(id, driver, username, password) {
-    id = '' + id;
-    if (!id) {
-      throw new Error('Expected an id');
-    }
-    var p = axios.put('/api/accounts/' + id, {
-      type: driver,
+  add(name, driver, username, password) {
+    var p = axios.post('/api/accounts', {
+      action: 'create',
+      name: name,
+      driver: driver,
       username: username,
       password: password
     })

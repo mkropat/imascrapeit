@@ -81,7 +81,7 @@ class BalanceHistory:
             return sqlite3.Row(c, row)
 
     @classmethod
-    def _create_table(klass, db):
+    def _create_table(klass, db, **kwargs):
         db.execute("""
         create table "{k._TABLE}" (
             "timestamp" text not null,

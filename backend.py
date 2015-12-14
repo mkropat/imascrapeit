@@ -1,3 +1,4 @@
+from collections import namedtuple
 import functools
 import os
 import os.path
@@ -13,7 +14,7 @@ from imascrapeit import dirs, driver
 from imascrapeit.account import Accounts
 from imascrapeit.balance import BalanceEntry, BalanceHistory
 from imascrapeit.chrome import open_chrome
-from imascrapeit.creds import Cred, CredStore
+from imascrapeit.creds import CredStore
 from imascrapeit.duration import minutes
 from imascrapeit.requests import AsyncRequestTracker
 from imascrapeit.secrets import SecretsStore, InvalidPassphrase
@@ -166,9 +167,9 @@ def do_session():
 def get_accounts():
     if request.method == 'GET':
         accounts =  _db().accounts.list()
-        balances = dict((a.name, _db().balance_history.get_current(a.name)) for a in accounts)
+        balances = dict((a.id, _db().balance_history.get_current(a.id)) for a in accounts)
         accounts = [
-            account_entry(a, balances[a.name], cred_store[a.name]) for a in accounts
+            account_entry(a, balances[a.id]) for a in accounts
         ]
         total = sum(b.amount for b in balances.values())
 
@@ -178,56 +179,58 @@ def get_accounts():
 
     elif request.method == 'POST':
         body = BulkAccountSchema.parse(request.get_json())
-        if body['action'] != 'update':
+
+        if body['action'] == 'create':
+            body = NewAccountSchema.parse(request.get_json())
+
+            body_sanitized = body.copy()
+            body_sanitized['password'] = '*'*len(body_sanitized['password'])
+
+            r = requests.new(body_sanitized)
+
+            driver.get_factory(body['driver'])
+
+            background.run(_create_account,
+                body['name'],
+                body['driver'],
+                body['username'],
+                body['password'],
+                r)
+
+            return redirect('/api/requests/{}'.format(r.id), code=303)
+
+        elif body['action'] == 'update':
+            r = requests.new()
+            background.run(_update_accounts, r)
+            return redirect('/api/requests/{}'.format(r.id), code=303)
+
+        else:
             return jsonify(message='Unsupported action'), 400
 
-        r = requests.new()
 
-        background.run(_update_accounts, r)
-
-        return redirect('/api/requests/{}'.format(r.id), code=303)
-
-@app.route('/api/accounts/<name>', methods=['GET', 'PUT', 'DELETE'])
+@app.route('/api/accounts/<id_>', methods=['GET', 'DELETE'])
 @requires_auth
-def get_account(name):
+def get_account(id_):
     if request.method == 'GET':
         try:
-            a = _db().accounts[name]
-            balance = _db().balance_history.get_current(a.name)
+            a = _db().accounts[id_]
+            balance = _db().balance_history.get_current(a.id_)
 
-            resp = account_entry(a, balance, cred_store[a.name])
+            resp = account_entry(a, balance)
             resp['_links'] = {
-                'self': { 'href': '/api/accounts/{}'.format(name) },
+                'self': { 'href': '/api/accounts/{}'.format(id_) },
             }
 
             return jsonify(**resp)
         except KeyError:
             return jsonify(message='No such acccount'), 404
 
-    elif request.method == 'PUT':
-        body = NewAccountSchema.parse(request.get_json())
-
-        body_sanitized = body.copy()
-        body_sanitized['password'] = '*'*len(body_sanitized['password'])
-
-        r = requests.new(body_sanitized)
-
-        driver.get_factory(body['type'])
-
-        background.run(_create_account,
-            name,
-            body['type'],
-            Cred(body['username'], body['password']),
-            r)
-
-        return redirect('/api/requests/{}'.format(r.id), code=303)
-
     elif request.method == 'DELETE':
         db = _db()
         with db:
-            del db.accounts[name]
-            db.balance_history.delete_history(name)
-            del cred_store[name]
+            del db.accounts[id_]
+            db.balance_history.delete_history(id_)
+            del cred_store[id_]
         return '', 204
 
 @app.route('/api/drivers')
@@ -235,22 +238,25 @@ def get_account(name):
 def get_drivers():
     return jsonify(drivers=driver.list())
 
-def _create_account(name, type_, creds, request_resolver):
+def _create_account(name, driver_name, username, password, request_resolver):
     try:
         with closing(_open_db()) as db:
             with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
-                client_factory = driver.get_factory(type_)
-                client = client_factory(browser, creds, login_timeout=minutes(5))
+                client_factory = driver.get_factory(driver_name)
+                client = client_factory(browser, Cred(username, password), login_timeout=minutes(5))
                 bal = client.get_balance()
 
+                account = None
                 with db:
-                    db.accounts.create(name, type_)
-                    db.balance_history.add(BalanceEntry(name, bal))
-                    cred_store[name] = creds
+                    account = db.accounts.create(name, driver_name, username)
+                    db.balance_history.add(BalanceEntry(account.id, bal))
+                    cred_store[account.id] = password
 
-                request_resolver.resolve(created_url='/api/accounts/{}'.format(name))
+                request_resolver.resolve(created_url='/api/accounts/{}'.format(account.id))
     except Exception:
         request_resolver.reject(traceback.format_exc())
+
+Cred = namedtuple('Cred', ['username', 'password'])
 
 def _update_accounts(request_resolver):
     try:
@@ -258,33 +264,19 @@ def _update_accounts(request_resolver):
             with open_chrome(dirs.chrome_profile('ImaScrapeIt Profile')) as browser:
                 with db:
                     for a in db.accounts.list():
-                        client_factory = driver.get_factory(a.type)
+                        client_factory = driver.get_factory(a.driver)
                         client = client_factory(
                             browser,
-                            cred_store[a.name],
+                            Cred(a.username, cred_store[a.id]),
                             login_timeout=minutes(5))
 
                         bal = client.get_balance()
 
-                        db.balance_history.add(BalanceEntry(a.name, bal))
+                        db.balance_history.add(BalanceEntry(a.id, bal))
 
         request_resolver.resolve()
     except Exception:
         request_resolver.reject(traceback.format_exc())
-
-class Account:
-    def __init__(self, name, creds=None, type_=None):
-        self.name = name
-        self._creds = creds
-
-        if type_ is None:
-            type_ = self.name
-        self.type_ = type_
-
-        self.client = None
-
-    def new_client(self, browser, timeout=None):
-        return driver.get_factory(self.type_)(browser, self._creds, timeout)
 
 class BulkAccountSchema(Schema):
     action = fields.Str(required=True)
@@ -292,28 +284,26 @@ class BulkAccountSchema(Schema):
     parse = classmethod(_schema_parse)
 
 class NewAccountSchema(Schema):
-    type = fields.Str(required=True)
+    name = fields.Str(required=True)
+    driver = fields.Str(required=True)
     username = fields.Str(required=True)
     password = fields.Str(required=True)
 
     parse = classmethod(_schema_parse)
 
-def account_entry(account, balance, creds=None):
-    entry = {
-        'id': account.name,
-        'type': account.type,
+def account_entry(account, balance):
+    return {
+        'id': account.id,
+        'name': account.name,
+        'driver': account.driver,
         'balance': {
             'current': str(balance.amount),
-            'last_updated': balance.timestamp.isoformat() + 'Z'
+            'last_updated': balance.timestamp.isoformat() + 'Z',
+        },
+        'creds': {
+            'username': account.username
         }
     }
-
-    if creds is not None:
-        entry['creds'] = {
-            'username': creds.username
-        }
-
-    return entry
 
 @app.route('/api/accounts/<account>/creds', methods=['PUT'])
 @requires_auth

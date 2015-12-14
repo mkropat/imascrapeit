@@ -35,7 +35,7 @@ class Accounts extends React.Component {
       <tr key={a.id}>
         <td>
           <Link to={`/accounts/${a.id}`}>
-            {a.id}
+            {a.name}
           </Link>
         </td>
         <td>{a.balance.current}</td>

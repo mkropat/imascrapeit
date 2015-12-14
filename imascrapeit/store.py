@@ -11,9 +11,9 @@ class DbContext:
         for name, factory in table_factories.items():
             setattr(self, name, factory(self._db))
 
-    def init_tables(self, migrator=None):
+    def init_tables(self, migrator=None, **kwargs):
         if migrator is None:
-            migrator = DbMigrator(self._db)
+            migrator = DbMigrator(self._db, kwargs)
 
         for name in self._tables:
             getattr(self, name).init(migrator)
@@ -37,8 +37,9 @@ class DbContext:
             self.rollback()
 
 class DbMigrator:
-    def __init__(self, version_db):
+    def __init__(self, version_db, context):
         self._version_db = version_db
+        self._context = context
 
         self._inited = False
 
@@ -72,7 +73,7 @@ class DbMigrator:
     def _apply(self, db, table, version, migration_func):
         with self._version_db:
             with db:
-                migration_func(db)
+                migration_func(db, **self._context)
 
                 insert = """ insert into "versions" ("table", "version") values (?, ?) """
                 self._version_db.execute(insert, [table, version])
