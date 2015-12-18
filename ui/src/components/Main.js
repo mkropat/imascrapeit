@@ -8,13 +8,16 @@ import { Link } from 'react-router'
 class AppComponent extends React.Component {
   constructor(props) {
     super(props);
+
+    this._listenCanceler = null;
+
     this.state = {
       breadcrumbTitles: {}
     };
   }
 
   componentWillMount() {
-    this._listenerId = this.props.route.breadcrumbNotifier.listen(
+    this._listenCancler = this.props.route.breadcrumbNotifier.listen(
         this.updateBreadcrumbTitles.bind(this));
 
     axios.get('/api/session')
@@ -79,8 +82,8 @@ class AppComponent extends React.Component {
   }
 
   componentWillUnmount() {
-    if (this._listenerId) {
-      this.props.route.breadcrumbNotifier.stopListening(this._listenerId);
+    if (this._listenCancler) {
+      this._listenCancler();
     }
   }
 }

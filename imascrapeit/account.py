@@ -23,7 +23,7 @@ class Accounts:
         query = """
         select "id", "name", "driver", "username" from "{s._TABLE}" where "id" = ?
         """.format(s=self)
-        row = c.execute(query, [id_]).fetchone()
+        row = self._db.execute(query, [id_]).fetchone()
         if row is None:
             raise KeyError(id_)
         else:

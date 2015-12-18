@@ -6,11 +6,11 @@ class Notifier {
 
   listen(callback) {
     this._listeners[this._id] = callback;
-    return this._id++;
-  }
+    let id = this._id++;
 
-  stopListening(id) {
-    delete this._listeners[id];
+    return () => {
+      delete this._listeners[id];
+    };
   }
 
   notify() {

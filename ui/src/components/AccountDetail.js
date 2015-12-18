@@ -13,13 +13,23 @@ class AccountDetail extends React.Component {
   }
 
   componentWillMount() {
-    this.props.route.accountsResource.get(this.props.params.id)
+    this.loadAccount(this.props.params.id);
+  }
+
+  componentWillReceiveProps(newProps) {
+    if (this.props.params.id !== newProps.params.id) {
+      this.loadAccount(newProps.params.id);
+    }
+  }
+
+  loadAccount(id) {
+    this.props.route.accountsResource.get(id)
       .then(r => {
         this.setState({
           account: r
         });
 
-        this.props.route.breadcrumbNotifier.notify(AccountDetail, r.id);
+        this.props.route.breadcrumbNotifier.notify(AccountDetail, r.name);
       });
   }
 
@@ -30,7 +40,7 @@ class AccountDetail extends React.Component {
     return (
       <div className="container">
         <h2>Detail</h2>
-        <p>Name: {account.id}</p>
+        <p>Name: {account.name}</p>
         <p>Balance: {balance.current}</p>
         <p>Last Updated: {this.formatTimestamp(balance.last_updated)}</p>
         <div className="btn-toolbar">
@@ -54,7 +64,7 @@ class AccountDetail extends React.Component {
                 <h4 className="modal-title">Confirm Delete</h4>
               </div>
               <div className="modal-body">
-                <p>Are you sure you want to delete the account "{account.id}"?</p>
+                <p>Are you sure you want to delete the "{account.name}" account?</p>
               </div>
               <div className="modal-footer">
                 <button type="button"

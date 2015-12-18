@@ -7,7 +7,7 @@ class Accounts extends React.Component {
   constructor(props) {
     super(props);
 
-    this._listenerId = null;
+    this._listenCanceler = null;
     this.state = {
       accounts: [],
       summary: {},
@@ -16,7 +16,7 @@ class Accounts extends React.Component {
   }
 
   componentWillMount() {
-    this._listenerId = this.props.route.accountsResource.listen(r => {
+    this._listenCanceler = this.props.route.accountsResource.listen(r => {
       this.setState({
         accounts: r.accounts || [],
         summary: r.summary || {}
@@ -98,7 +98,9 @@ class Accounts extends React.Component {
   }
 
   componentWillUnmount() {
-    this.props.route.accountsResource.stopListening(this._listenerId);
+    if (this._listenCanceler) {
+      this._listenCanceler();
+    }
   }
 }
 

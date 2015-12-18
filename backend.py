@@ -214,7 +214,7 @@ def get_account(id_):
     if request.method == 'GET':
         try:
             a = _db().accounts[id_]
-            balance = _db().balance_history.get_current(a.id_)
+            balance = _db().balance_history.get_current(a.id)
 
             resp = account_entry(a, balance)
             resp['_links'] = {

@@ -10,11 +10,8 @@ class AccountsResource {
 
   listen(cb) {
     this._listeners[this._listenerId] = cb;
-    return this._listenerId++;
-  }
-
-  stopListening(id) {
-    if (id) {
+    let id = this._listenerId++;
+    return () => {
       delete this._listeners[id];
     }
   }
