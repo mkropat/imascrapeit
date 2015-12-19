@@ -8,7 +8,8 @@ class AccountDetail extends React.Component {
 
     this.state = {
       account: {},
-      isDeleting: false
+      isDeleting: false,
+      deleteLink: null,
     };
   }
 
@@ -26,10 +27,11 @@ class AccountDetail extends React.Component {
     this.props.route.accountsResource.get(id)
       .then(r => {
         this.setState({
-          account: r
+          account: r.data,
+          deleteLink: r.data._links.delete,
         });
 
-        this.props.route.breadcrumbNotifier.notify(AccountDetail, r.name);
+        this.props.route.breadcrumbNotifier.notify(AccountDetail, r.data.name);
       });
   }
 
@@ -46,7 +48,7 @@ class AccountDetail extends React.Component {
         <div className="btn-toolbar">
           <button type="button"
             className="btn btn-default"
-            disabled={this.state.isDeleting ? 'disabled' : ''}
+            disabled={this.canDelete() ? '' : 'disabled'}
             onClick={() => this.confirmDelete()}>
             {this.state.isDeleting ? 'Deleting...' : 'Delete Account'}
           </button>
@@ -83,6 +85,10 @@ class AccountDetail extends React.Component {
     );
   }
 
+  canDelete() {
+    return this.state.deleteLink && !this.state.isDeleting;
+  }
+
   confirmDelete() {
     if (this._modal) {
       jQuery(this._modal).modal();
@@ -93,7 +99,9 @@ class AccountDetail extends React.Component {
     this.setState({
       isDeleting: true
     });
-    this.props.route.accountsResource.delete(this.state.account.id)
+
+    let link = this.state.deleteLink;
+    this.props.route.accountsResource.action(link.method, link.href)
       .then(r => {
         this.props.history.push('/accounts');
       });

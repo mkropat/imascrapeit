@@ -15,7 +15,7 @@ class CredStore:
         return getuser()
 
     def is_new(self):
-        return os.path.exists(self._path)
+        return not os.path.exists(self._path)
 
     def is_open(self):
         return not isinstance(self._store, _NullStore)

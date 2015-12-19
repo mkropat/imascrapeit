@@ -20,11 +20,11 @@ class AppComponent extends React.Component {
     this._listenCancler = this.props.route.breadcrumbNotifier.listen(
         this.updateBreadcrumbTitles.bind(this));
 
-    axios.get('/api/session')
-      .then(r => {
-        let session = r.data || {};
-        this.props.history.push(getStateFromSession(session));
-      });
+    //axios.get('/api/session')
+    //  .then(r => {
+    //    let session = r.data || {};
+    //    this.props.history.push(getStateFromSession(session));
+    //  });
   }
 
   updateBreadcrumbTitles(component, title) {

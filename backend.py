@@ -92,8 +92,8 @@ def _schema_parse(Schema, data):
     return Schema(strict=True).load(data).data
 
 class SessionSchema(Schema):
+    _links = fields.Dict(dump_only=True)
     is_authenticated = fields.Boolean()
-    is_setup = fields.Boolean(dump_only=True)
     username = fields.Str(dump_only=True)
     passphrase = fields.Str(load_only=True)
 
@@ -102,7 +102,19 @@ class SessionSchema(Schema):
 
 @app.route('/api')
 def entry_point():
-    return jsonify(name='This is an imascrapeit API')
+    links = {
+        'self': { 'href': '/api' },
+        'session': { 'href': '/api/session' },
+    }
+    if is_authenticated():
+        links['accounts'] = { 'href': '/api/accounts' }
+        links['drivers'] = { 'href': '/api/drivers' }
+        links['requests'] = { 'href': '/api/requests' }
+
+    return jsonify(
+        _links=links,
+        name='This is an imascrapeit API'
+    )
 
 requests = AsyncRequestTracker()
 
@@ -157,9 +169,20 @@ def do_session():
 
         return '', 204
 
+    links = {
+        'self': { 'href': '/api/session' }
+    }
+    if is_authenticated():
+        links['logout'] = { 'method': 'post', 'href': '/api/session' }
+    else:
+        if cred_store.is_new():
+            links['setup'] = { 'method': 'post', 'href': '/api/session' }
+        else:
+            links['login'] = { 'method': 'post', 'href': '/api/session' }
+
     return SessionSchema.jsonify(
+        _links=links,
         is_authenticated=is_authenticated(),
-        is_setup=cred_store.is_new(),
         username=cred_store.user)
 
 @app.route('/api/accounts', methods=['GET', 'POST'])
@@ -173,8 +196,18 @@ def get_accounts():
         ]
         total = sum(b.amount for b in balances.values())
 
+        links = {
+            'self': { 'href': '/api/accounts' },
+            'add': { 'method': 'post', 'href': '/api/accounts' }
+        }
+        if len(accounts):
+            links['update'] = { 'method': 'post', 'href': '/api/accounts' }
+
         return jsonify(
-            accounts=accounts,
+            _links=links,
+            _embedded={
+                'accounts': accounts,
+            },
             summary={ 'balance': str(total) })
 
     elif request.method == 'POST':
@@ -217,9 +250,6 @@ def get_account(id_):
             balance = _db().balance_history.get_current(a.id)
 
             resp = account_entry(a, balance)
-            resp['_links'] = {
-                'self': { 'href': '/api/accounts/{}'.format(id_) },
-            }
 
             return jsonify(**resp)
         except KeyError:
@@ -292,7 +322,12 @@ class NewAccountSchema(Schema):
     parse = classmethod(_schema_parse)
 
 def account_entry(account, balance):
+    self_href = '/api/accounts/{}'.format(account.id)
     return {
+        '_links': {
+            'self': { 'href': self_href },
+            'delete': { 'method': 'delete', 'href': self_href },
+        },
         'id': account.id,
         'name': account.name,
         'driver': account.driver,
@@ -301,7 +336,7 @@ def account_entry(account, balance):
             'last_updated': balance.timestamp.isoformat() + 'Z',
         },
         'creds': {
-            'username': account.username
+            'username': account.username,
         }
     }
 

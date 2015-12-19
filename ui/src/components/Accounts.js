@@ -9,6 +9,7 @@ class Accounts extends React.Component {
 
     this._listenCanceler = null;
     this.state = {
+      _links: {},
       accounts: [],
       summary: {},
       isUpdating: false,
@@ -16,14 +17,28 @@ class Accounts extends React.Component {
   }
 
   componentWillMount() {
-    this._listenCanceler = this.props.route.accountsResource.listen(r => {
+    this.getList();
+  }
+
+  isViewingThisComponent(props) {
+    let leafRoute = props.routes[props.routes.length - 1];
+    return leafRoute && leafRoute.component === Accounts;
+  }
+
+  componentWillReceiveProps(newProps) {
+    if (this.isViewingThisComponent(newProps)) {
+      this.getList();
+    }
+  }
+
+  getList() {
+    this.props.route.accountsResource.list().then(r => {
       this.setState({
-        accounts: r.accounts || [],
-        summary: r.summary || {}
+        _links: r.data._links || {},
+        accounts: r.data._embedded.accounts || [],
+        summary: r.data.summary || {}
       });
     });
-
-    this.props.route.accountsResource.listFresh()
   }
 
   render() {
@@ -75,7 +90,7 @@ class Accounts extends React.Component {
   }
 
   canUpdateAccounts() {
-    return this.state.accounts.length && !this.state.isUpdating;
+    return this.state._links.update && !this.state.isUpdating;
   }
 
   formatTimestamp(ts) {
@@ -93,7 +108,10 @@ class Accounts extends React.Component {
       });
     };
 
-    this.props.route.accountsResource.update()
+    let link = this.state._links.update;
+    this.props.route.accountsResource.actionTillComplete(link.method, link.href, {
+      action: 'update'
+    })
       .then(stopUpdating, stopUpdating);
   }
 

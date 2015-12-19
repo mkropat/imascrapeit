@@ -11,11 +11,19 @@ class AddAccount extends React.Component {
       driver: '',
       name: '',
       username: '',
-      password: ''
+      password: '',
+      addLink: null
     };
   }
 
   componentWillMount() {
+    this.props.route.accountsResource.list()
+      .then(r => {
+        this.setState({
+          addLink: r.data._links.add
+        });
+      });
+
     axios.get('/api/drivers')
       .then(r => {
         this.setState({
@@ -61,13 +69,17 @@ class AddAccount extends React.Component {
 
           <button type="submit"
             className="btn btn-primary"
-            disabled={this.state.isAdding ? 'disabled' : ''}>
+            disabled={this.canAdd() ? '' : 'disabled'}>
             {this.state.isAdding ? 'Adding...' : 'Add'}
           </button>
           <Link to="/accounts" className="btn btn-link">Cancel</Link>
         </form>
       </div>
     );
+  }
+
+  canAdd() {
+    return this.state.addLink && !this.state.isAdding;
   }
 
   addAccount(evt) {
@@ -77,7 +89,15 @@ class AddAccount extends React.Component {
       isAdding: true
     });
 
-    this.props.route.accountsResource.add(this.state.name, this.state.driver, this.state.username, this.state.password)
+    let link = this.state.addLink;
+    let data = {
+      action: 'create',
+      name: this.state.name,
+      driver: this.state.driver,
+      username: this.state.username,
+      password: this.state.password
+    };
+    this.props.route.accountsResource.actionTillComplete(link.method, link.href, data)
       .then(r => {
         this.props.history.push('/accounts');
       });
