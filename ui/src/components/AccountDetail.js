@@ -10,6 +10,7 @@ class AccountDetail extends React.Component {
       account: {},
       isDeleting: false,
       deleteLink: null,
+      updateLink: null,
     };
   }
 
@@ -29,10 +30,17 @@ class AccountDetail extends React.Component {
         this.setState({
           account: r.data,
           deleteLink: r.data._links.delete,
+          updateLink: r.data._links.update_password,
         });
 
         this.props.route.breadcrumbNotifier.notify(AccountDetail, r.data.name);
       });
+  }
+
+  updateField(evt) {
+    let newState = {};
+    newState[evt.target.id] = evt.target.value;
+    this.setState(newState);
   }
 
   render() {
@@ -45,13 +53,26 @@ class AccountDetail extends React.Component {
         <p>Name: {account.name}</p>
         <p>Balance: {balance.current}</p>
         <p>Last Updated: {this.formatTimestamp(balance.last_updated)}</p>
-        <div className="btn-toolbar">
-          <button type="button"
-            className="btn btn-default"
-            disabled={this.canDelete() ? '' : 'disabled'}
-            onClick={() => this.confirmDelete()}>
-            {this.state.isDeleting ? 'Deleting...' : 'Delete Account'}
-          </button>
+
+        <div className="form-group">
+          <label htmlFor="password">New Password</label>
+          <input type="password" className="form-control" onChange={this.updateField.bind(this)} value={this.state.password} id="password" />
+        </div>
+
+        <div className="form-group">
+          <div className="btn-toolbar">
+            <button type="button"
+              className="btn btn-primary"
+              onClick={() => this.updateAccount()}>
+              Update Account
+            </button>
+            <button type="button"
+              className="btn btn-default"
+              disabled={this.canDelete() ? '' : 'disabled'}
+              onClick={() => this.confirmDelete()}>
+              {this.state.isDeleting ? 'Deleting...' : 'Delete Account'}
+            </button>
+          </div>
         </div>
 
         <div className="modal fade"
@@ -83,6 +104,14 @@ class AccountDetail extends React.Component {
         </div>
       </div>
     );
+  }
+
+  updateAccount() {
+    let link = this.state.updateLink;
+    this.props.route.accountsResource.action(link.method, link.href, {
+      password: this.state.password
+    })
+      .then(() => this.setState({ password: '' }));
   }
 
   canDelete() {

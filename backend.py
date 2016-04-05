@@ -327,6 +327,7 @@ def account_entry(account, balance):
         '_links': {
             'self': { 'href': self_href },
             'delete': { 'method': 'delete', 'href': self_href },
+            'update_password': { 'method': 'put', 'href': self_href + '/creds' },
         },
         'id': account.id,
         'name': account.name,
@@ -340,10 +341,21 @@ def account_entry(account, balance):
         }
     }
 
-@app.route('/api/accounts/<account>/creds', methods=['PUT'])
+@app.route('/api/accounts/<account_id>/creds', methods=['PUT'])
 @requires_auth
-def set_creds(account):
-    raise NotImplementedError()
+def set_creds(account_id):
+    if request.method == 'PUT':
+        body = request.get_json()
+        print('set_creds', body)
+
+        a = _db().accounts[account_id]
+
+        cred_store[a.id] = body['password']
+
+        return '', 204
+
+    else:
+        return jsonify(message='Unsupported action'), 400
 
 def is_authenticated():
     if not cred_store.is_open() and 'passphrase' in session:
